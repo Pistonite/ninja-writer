@@ -153,12 +153,11 @@ macro_rules! implement_rule_variables {
             /// ninja.rule("cl", "cl /c $in /Fo$out")
             ///     .deps_msvc_prefix("Note: including file: ");
             ///
-            /// assert_eq!(ninja.to_string(), r###"
+            /// assert_eq!(ninja.to_string(), format!(r###"
             /// rule cl
             ///   command = cl /c $in /Fo$out
             ///   deps = msvc
-            ///   msvc_deps_prefix = Note: including file:
-            /// "###);
+            ///   msvc_deps_prefix = Note: including file: {}"###, "\n"));
             /// ```
             pub fn deps_msvc_prefix<SMsvcDepsPrefix>(self, msvc_deps_prefix: SMsvcDepsPrefix) -> Self
             where

@@ -1,13 +1,13 @@
 [package]
 name = "ninja-writer"
-version = "0.1.0"
+version = "0.1.1"
 description = "Simple and ergonomic library for writing Ninja build files"
 edition = "2021"
 repository = "https://github.com/Pistonite/ninja-writer"
 license = "MIT"
 authors = ["Pistonight <terrabyte100k@gmail.com>"]
 keywords = ["ninja", "build", "syntax", "generator", "build-system"]
-categories = ["development-tools", "build-tools"]
+categories = ["development-tools::build-tools", "development-tools"]
 exclude = [
     "Taskfile.yml",
     ".github/**/*",
