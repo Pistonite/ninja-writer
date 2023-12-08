@@ -15,3 +15,6 @@ and learn the syntax for ninja myself.
 
 ## Usage
 See [documentation](https://docs.rs/ninja-writer).
+
+## Contribution and issues
+Contributions are welcome. Please open PRs and issues! :)
