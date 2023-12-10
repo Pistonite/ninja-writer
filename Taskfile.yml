@@ -1,0 +1,17 @@
+version: '3'
+
+tasks:
+  test:
+    desc: Run tests
+    cmds:
+    - cargo test
+    - cargo test --no-default-features
+    - cargo test --features thread-safe
+
+  check:
+    desc: Run lints
+    cmds:
+    - cargo clippy --all-features -- -Dwarnings
+    - cargo fmt --check
+
+

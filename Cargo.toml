@@ -19,3 +19,4 @@ exclude = [
 [features]
 default = ["std"]
 std = []
+thread-safe = ["std"]

@@ -1,34 +1,53 @@
 //! # ninja-writer
+//! ![Build Badge](https://img.shields.io/github/actions/workflow/status/Pistonite/ninja-writer/rust.yml)
+//! ![Version Badge](https://img.shields.io/crates/v/ninja-writer)
+//! ![License Badge](https://img.shields.io/github/license/Pistonite/ninja-writer)
+//! ![Issue Badge](https://img.shields.io/github/issues/Pistonite/ninja-writer)
 //!
-//! Library for writing [ninja](https://ninja-build.org) build files, similar to ninja-syntax or ninja-build-syntax.
+//! Library for writing [ninja](https://ninja-build.org) build files with a focus on
+//! ergonomics and simplicity.
+//!
+//! However, one slight negative is that Rust requires a trait to be in scope to use.
+//! Therefore, it is recommended to import `*` from the crate, so that all the traits
+//! are in scope.
+//! ```rust
+//! use ninja_writer::*;
+//! ```
 //!
 //! ## Why another?
 //! I found existing libraries poorly documented, and I want to explore
 //! and learn the syntax for ninja myself.
 //!
 //! ## Example
-//! Here's a simple but complete example of writing a ninja file that builds a simple C program.
+//! The [`Ninja`] struct is the main entry point for writing a ninja file.
+//! It is used to make top-level declarations, such as variables and rules.
+//! It implements [`Display`](core::fmt::Display) so that it can be converted to a string, written to a file, etc.
+//!
+//! Here's a complete example of writing a ninja file that builds a simple C program.
+//! See [`Ninja`] for all the methods available.
 //!
 //! ```rust
-//! use ninja_writer::Ninja;
+//! use ninja_writer::*;
 //!
 //! // Create writer
-//! let mut ninja = Ninja::new();
+//! let ninja = Ninja::new();
 //! // Create a variable
 //! ninja.variable("cflags", "-Wall -Wextra -Werror");
-//! // Create a rule
-//! let mut cc = ninja.rule("cc", "gcc -MD -MF $depfile $cflags -c $in -o $out")
-//!     .description("CC $out")
+//! // Create the cc rule
+//! let cc = ninja.rule("cc", "gcc -MD -MF $depfile $cflags -c $in -o $out")
+//!     .description("Compiling $out")
 //!     .depfile("$out.d")
 //!     .deps_gcc();
-//! // Create build edges using the rule
+//! // Create the ld rule
+//! let ld = ninja.rule("ld", "gcc -o $out $in")
+//!     .description("Linking $out");
+//!
+//! // Create build edges using the rules
 //! cc.build(["foo.o"]).with(["foo.c"]);
 //! cc.build(["bar.o"]).with(["bar.c"])
 //!     .variable("cflags", "-Wall -DDEBUG");
 //!
-//! let mut link = ninja.rule("link", "gcc -o $out $in")
-//!    .description("LINK $out");
-//! link.build(["app"]).with(["foo.o", "bar.o"]);
+//! ld.build(["app"]).with(["foo.o", "bar.o"]);
 //!
 //! ninja.defaults(["app"]);
 //!
@@ -38,19 +57,18 @@
 //!
 //! rule cc
 //!   command = gcc -MD -MF $depfile $cflags -c $in -o $out
-//!   description = CC $out
+//!   description = Compiling $out
 //!   depfile = $out.d
 //!   deps = gcc
+//!
+//! rule ld
+//!   command = gcc -o $out $in
+//!   description = Linking $out
 //!
 //! build foo.o: cc foo.c
 //! build bar.o: cc bar.c
 //!   cflags = -Wall -DDEBUG
-//!
-//! rule link
-//!   command = gcc -o $out $in
-//!   description = LINK $out
-//!
-//! build app: link foo.o bar.o
+//! build app: ld foo.o bar.o
 //!
 //! default app
 //! "###);
@@ -60,49 +78,39 @@
 //! You can disable the `std` feature to make the library `no_std` compatible. I don't know why you
 //! want to do that, but it's here just in case.
 //!
-//! ## The `Ninja` struct
-//! The [`Ninja`] struct is the main entry point for writing a ninja file.
-//! It is used to make top-level declarations, such as variables and rules.
-//! It implements [`Display`] so that it can be converted to a string, written to a file, etc.
+//! ## Thread safety
+//! By default, the API is not thread-safe. However, you can enable the `thread-safe` feature,
+//! which uses `Arc` and `RwLock` to ensure thread safety.
 //!
-//! ## Rules
-//! Rules can be created with the [`rule`](Ninja::rule) function from `Ninja`.
-//! Rules created this way are automatically added to the ninja file.
+//! Here's an example of using 2 threads to configure 200 rules.
+//! (It's highly theoretical. [`Rule`] has a more realistic example
+//! where multiple threads configure build edges on the same rule)
 //! ```rust
-//! use ninja_writer::Ninja;
+//! # #[cfg(feature = "thread-safe")]
+//! # {
+//! use ninja_writer::*;
+//! use std::sync::Arc;
 //!
-//! let mut ninja = Ninja::new();
-//! // Create a rule
-//! let cc = ninja.rule("cc", "gcc $cflags -c $in -o $out");
-//! assert_eq!(ninja.to_string(), r###"
-//! rule cc
-//!   command = gcc $cflags -c $in -o $out
-//! "###);
+//! let ninja = Arc::new(Ninja::new());
+//! let ninja1 = Arc::clone(&ninja);
+//! let ninja2 = Arc::clone(&ninja);
+//! let t1 = std::thread::spawn(move || {
+//!     for i in 0..100 {
+//!         ninja1.rule("example", "...");
+//!     }
+//! });
+//! let t2 = std::thread::spawn(move || {
+//!     for i in 0..100 {
+//!         ninja2.rule("example", "...");
+//!     }
+//! });
+//! t1.join().unwrap();
+//! t2.join().unwrap();
+//!
+//! assert_eq!(ninja.stmts.inner().len(), 200);
+//! # }
 //! ```
-//!
-//! You can also create owned [`Rule`]s with [`Rule::new`](Rule::new).
-//! Then use [`add_rule`](Ninja::add_rule) or [`add_to`](Rule::add_to) to add them to the ninja file.
-//! ```rust
-//! use ninja_writer::{Ninja, Rule};
-//!
-//! let mut ninja = Ninja::new();
-//! let cc: Rule = Rule::new("cc", "gcc $cflags -c $in -o $out");
-//!
-//! let cc = cc.add_to(&mut ninja);
-//! // ... use cc.build to configure build edges
-//!
-//! let link: Rule = Rule::new("link", "gcc -o $out $in");
-//! let link = ninja.add_rule(link);
-//! // ... use link.build to configure build edges
-//!
-//! assert_eq!(ninja.to_string(), r###"
-//! rule cc
-//!   command = gcc $cflags -c $in -o $out
-//!
-//! rule link
-//!   command = gcc -o $out $in
-//! "###);
-//! ```
+//! The example won't compile unless you enable the `thread-safe` feature.
 //!
 //! ## Escaping
 //! There is an [`escape`] function that can be used to escape strings
@@ -130,7 +138,7 @@
 //! ## Arg lists
 //! For functions that take a list of arguments (such as [`build`](RuleRef::build)),
 //! the types of the elements in the slice must be the same due to Rust's type system restrictions.
-//! ```no_compile
+//! ```compile_fail
 //! // This won't compile
 //! let foo = "foo".to_string();
 //! let args = [foo, "bar"];
@@ -168,41 +176,19 @@
 #![cfg_attr(not(feature = "std"), no_std)]
 
 extern crate alloc;
-use alloc::borrow::ToOwned;
-use alloc::string::String;
-use alloc::sync::Arc;
-use alloc::vec::Vec;
-use core::fmt::{Display, Formatter, Result};
 
-/// The main entry point for writing a ninja file.
-#[derive(Debug, Clone, PartialEq)]
-pub struct Ninja {
-    /// The list of statements
-    pub statements: Vec<Stmt>,
+pub mod build;
+pub mod ninja;
+pub mod pool;
+pub mod rule;
+pub mod stmt;
+pub mod util;
+pub mod variable;
 
-    /// The built-in phony rule,
-    pub phony: Rule,
-}
-
-mod ninja;
-pub use ninja::*;
-
-mod stmt;
-pub use stmt::*;
-
-
-mod rule;
-pub use rule::*;
-
-mod build;
-pub use build::*;
-
-mod pool;
-pub use pool::*;
-
-
-mod variable;
-pub use variable::*;
-
-mod util;
+// Re-exports
+pub use build::{Build, BuildRef, BuildVariables};
+pub use ninja::Ninja;
+pub use pool::{Pool, PoolRef};
+pub use rule::{Rule, RuleRef, RuleVariables};
 pub use util::{escape, escape_build, escape_path};
+pub use variable::{Variable, Variables};

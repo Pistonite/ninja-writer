@@ -2,13 +2,13 @@
 
 use alloc::borrow::ToOwned;
 use alloc::format;
-use core::cell::RefCell;
+use alloc::string::String;
 use core::fmt::{Display, Formatter, Result};
 use core::ops::Deref;
 
-use crate::{StmtRef, StmtList, Variables, NinjaInternal};
-use crate::util::Indented;
-use crate::{Stmt, Variable};
+use crate::stmt::{Stmt, StmtRef};
+use crate::util::{AddOnlyVec, Indented};
+use crate::{Ninja, Variable, Variables};
 
 /// A pool, as defined by the `pool` keyword
 ///
@@ -34,39 +34,35 @@ use crate::{Stmt, Variable};
 ///   pool = expensive
 /// "###);
 /// ```
-/// # Thread safety
-/// Calling `pool` on a `NinjaSync` from multiple threads is safe.
-/// However, configuring variables on a pool is not thread-safe (even with
-/// [`NinjaSync`](crate::NinjaSync)). 
-#[derive(Debug, Clone, PartialEq, Default)]
+#[derive(Debug)]
 pub struct Pool {
     /// Name of the pool
     pub name: String,
     /// The list of variables, as an indented block
     ///
     /// Currently the only useful variable is `depth`
-    pub variables: RefCell<Vec<Variable>>,
+    pub variables: AddOnlyVec<Variable>,
 }
 
 /// Reference to a pool statement
-#[derive(Debug)]
-pub struct PoolRef<'a, TList, TRc>
-where TList: StmtList<TRc=TRc> {
-        inner:StmtRef<'a, TList, TRc>
-    }
+#[derive(Debug, Clone)]
+pub struct PoolRef(pub(crate) StmtRef);
 
-
-impl<'a, TList, TRc> Deref for PoolRef<'a, TList, TRc> where TList: StmtList<TRc=TRc>
-, TRc: Deref<Target=Stmt> {
+impl Deref for PoolRef {
     type Target = Pool;
     fn deref(&self) -> &Self::Target {
-        match self.inner.deref().deref() {
+        match self.0.deref().deref() {
             Stmt::Pool(p) => p,
             _ => panic!("Expected pool statement"),
         }
     }
 }
 
+impl AsRef<Pool> for PoolRef {
+    fn as_ref(&self) -> &Pool {
+        self.deref()
+    }
+}
 
 impl Pool {
     /// Create a pool with a given name and depth
@@ -77,32 +73,34 @@ impl Pool {
     {
         let x = Self {
             name: name.as_ref().to_owned(),
-            variables: Default::default(),
+            variables: AddOnlyVec::new(),
         };
-        x.variable("depth", format!("{depth}"));
-        x
+        x.variable("depth", format!("{depth}"))
     }
 
     /// Add the pool to a ninja file
     #[inline]
-    pub fn add_to<TList, TRc>(self, ninja: &NinjaInternal<TList, TRc>) -> PoolRef<'_, TList, TRc>
-    where TList: StmtList<TRc=TRc> {
-        PoolRef {
-            inner: ninja.stmts.add(Stmt::Pool(self)),
-        }
+    pub fn add_to(self, ninja: &Ninja) -> PoolRef {
+        PoolRef(ninja.add_stmt(Stmt::Pool(self)))
     }
 }
 
 impl Variables for Pool {
     fn add_variable_internal(&self, v: Variable) {
-        self.variables.borrow_mut().push(v);
+        self.variables.add(v);
+    }
+}
+
+impl Variables for PoolRef {
+    fn add_variable_internal(&self, v: Variable) {
+        self.deref().add_variable_internal(v);
     }
 }
 
 impl Display for Pool {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         writeln!(f, "pool {}", self.name)?;
-        for variable in self.variables.borrow().iter() {
+        for variable in self.variables.inner().iter() {
             Indented(variable).fmt(f)?;
             writeln!(f)?;
         }
@@ -123,9 +121,7 @@ mod test {
 
     #[test]
     fn test_variable() {
-        let pool = Pool::new("foo", 42)
-            ;
-        pool.variable("foov", "z");
+        let pool = Pool::new("foo", 42).variable("foov", "z");
         assert_eq!(pool.to_string(), "pool foo\n  depth = 42\n  foov = z\n");
     }
 }

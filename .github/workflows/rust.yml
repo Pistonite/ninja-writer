@@ -30,3 +30,5 @@ jobs:
     - run: cargo test --release
     - run: cargo build --release --no-default-features
     - run: cargo test --release --no-default-features
+    - run: cargo build --release --feature thread-safe
+    - run: cargo test --release --feature thread-safe

@@ -1,7 +1,12 @@
 //! Utilities
 use alloc::borrow::{Cow, ToOwned};
 use alloc::string::String;
+use alloc::vec::Vec;
+#[cfg(not(feature = "thread-safe"))]
+use core::cell::{Ref, RefCell};
 use core::fmt::{Display, Formatter, Result};
+#[cfg(feature = "thread-safe")]
+use std::sync::{RwLock, RwLockReadGuard};
 
 /// Helper type to write indented things
 pub struct Indented<TDisplay>(pub TDisplay)
@@ -194,3 +199,78 @@ mod test_escape {
     }
 }
 
+#[cfg(feature = "thread-safe")]
+pub type RefCounted<T> = alloc::sync::Arc<T>;
+#[cfg(not(feature = "thread-safe"))]
+pub type RefCounted<T> = alloc::rc::Rc<T>;
+
+/// A list that can only be added to, with interior mutability
+#[derive(Debug)]
+pub struct AddOnlyVec<T> {
+    #[cfg(feature = "thread-safe")]
+    inner: RwLock<Vec<T>>,
+    #[cfg(not(feature = "thread-safe"))]
+    inner: RefCell<Vec<T>>,
+}
+#[cfg(feature = "thread-safe")]
+pub type VecInnerGuard<'a, T> = RwLockReadGuard<'a, Vec<T>>;
+#[cfg(not(feature = "thread-safe"))]
+pub type VecInnerGuard<'a, T> = Ref<'a, Vec<T>>;
+
+impl<T> AddOnlyVec<T> {
+    pub fn new() -> Self {
+        #[cfg(feature = "thread-safe")]
+        {
+            Self {
+                inner: RwLock::new(Vec::new()),
+            }
+        }
+        #[cfg(not(feature = "thread-safe"))]
+        {
+            Self {
+                inner: RefCell::new(Vec::new()),
+            }
+        }
+    }
+
+    /// Add an element to the list
+    pub fn add(&self, element: T) {
+        #[cfg(feature = "thread-safe")]
+        self.inner.write().unwrap().push(element);
+        #[cfg(not(feature = "thread-safe"))]
+        self.inner.borrow_mut().push(element);
+    }
+
+    pub fn extend<TIter>(&self, iter: TIter)
+    where
+        TIter: IntoIterator<Item = T>,
+    {
+        #[cfg(feature = "thread-safe")]
+        self.inner.write().unwrap().extend(iter);
+        #[cfg(not(feature = "thread-safe"))]
+        self.inner.borrow_mut().extend(iter);
+    }
+
+    /// Immutably borrow the inner vector for read access
+    pub fn inner(&self) -> VecInnerGuard<'_, T> {
+        #[cfg(feature = "thread-safe")]
+        return self.inner.read().unwrap();
+        #[cfg(not(feature = "thread-safe"))]
+        self.inner.borrow()
+    }
+}
+
+impl<T> Default for AddOnlyVec<T> {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl<T> AddOnlyVec<RefCounted<T>> {
+    /// Add an element to the list wrapped with ref-counted smart pointer
+    pub fn add_rc(&self, element: T) -> RefCounted<T> {
+        let rc = RefCounted::new(element);
+        self.add(RefCounted::clone(&rc));
+        rc
+    }
+}

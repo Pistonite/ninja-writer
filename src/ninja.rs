@@ -1,40 +1,37 @@
 //! Implementation of top-level stuff
 
 use alloc::borrow::ToOwned;
-use alloc::sync::Arc;
-use alloc::rc::Rc;
 use core::fmt::{Display, Formatter, Result};
 
-use crate::{Build, BuildRef, Pool, PoolRef, Rule, RuleRef, Stmt, Variable, StmtList, StmtVec, StmtVecSync, };
+use crate::stmt::{Stmt, StmtRef};
+use crate::util::{AddOnlyVec, RefCounted};
+use crate::{Build, BuildRef, Pool, PoolRef, Rule, RuleRef, Variable};
 
 /// The main entry point for writing a ninja file.
 ///
 /// # Examples
 /// See the [crate-level documentation](crate)
-///
-/// # Thread safety
-/// `Ninja::new` creates an instance that is not thread-safe.
-/// `NinjaSync::new` creates an instance that is safe to add statements
-/// from multiple threads.
-///
-/// See the [crate-level documentation](crate) for more examples.
-#[derive(Debug, Clone, PartialEq)]
-pub struct NinjaInternal<TList, TRc> where TList: StmtList<TRc=TRc> {
+#[derive(Debug)]
+pub struct Ninja {
     /// The list of statements
-    pub stmts: TList,
+    pub stmts: RefCounted<AddOnlyVec<RefCounted<Stmt>>>,
 
     /// The built-in phony rule,
     pub phony: Rule,
 }
-pub type Ninja = NinjaInternal<StmtVec, Rc<Stmt>>;
-pub type NinjaSync = NinjaInternal<StmtVecSync, Arc<Stmt>>;
 
-impl<TList, TRc> NinjaInternal<TList, TRc> where TList: StmtList<TRc=TRc> {
+impl Default for Ninja {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl Ninja {
     /// Create a blank ninja file
     pub fn new() -> Self {
         Self {
             phony: Rule::new("phony", ""),
-            stmts: TList::default(),
+            stmts: Default::default(),
         }
     }
 
@@ -44,10 +41,10 @@ impl<TList, TRc> NinjaInternal<TList, TRc> where TList: StmtList<TRc=TRc> {
     ///
     /// # Example
     /// ```rust
-    /// use ninja_writer::Ninja;
+    /// use ninja_writer::*;
     ///
-    /// let mut ninja = Ninja::new();
-    /// let mut rule = ninja.rule("cc", "gcc -c $in -o $out");
+    /// let ninja = Ninja::new();
+    /// let rule = ninja.rule("cc", "gcc -c $in -o $out");
     /// rule.build(["foo.o"]).with(["foo.c"]);
     ///
     /// assert_eq!(ninja.to_string(), r###"
@@ -57,7 +54,7 @@ impl<TList, TRc> NinjaInternal<TList, TRc> where TList: StmtList<TRc=TRc> {
     /// build foo.o: cc foo.c
     /// "###);
     #[inline]
-    pub fn rule<SName, SCommand>(&self, name: SName, command: SCommand) -> RuleRef<'_, TList, TRc>
+    pub fn rule<SName, SCommand>(&self, name: SName, command: SCommand) -> RuleRef
     where
         SName: AsRef<str>,
         SCommand: AsRef<str>,
@@ -71,31 +68,29 @@ impl<TList, TRc> NinjaInternal<TList, TRc> where TList: StmtList<TRc=TRc> {
     ///
     /// # Example
     /// ```rust
-    /// use ninja_writer::Ninja;
+    /// use ninja_writer::*;
     ///
-    /// let mut ninja = Ninja::new();
+    /// let ninja = Ninja::new();
     /// ninja.phony(["all"]).with(["foo.o", "bar.o"]);
     ///
     /// assert_eq!(ninja.to_string(), r###"
     /// build all: phony foo.o bar.o
     /// "###);
     /// ```
-    pub fn phony<SOutputIter, SOutput>(&mut self, outputs: SOutputIter) -> BuildRef<'_, TList, TRc>
+    pub fn phony<SOutputIter, SOutput>(&self, outputs: SOutputIter) -> BuildRef
     where
         SOutputIter: IntoIterator<Item = SOutput>,
         SOutput: AsRef<str>,
     {
         let build = Build::new(&self.phony, outputs);
-        BuildRef {
-            inner: self.stmts.add(Stmt::Build(build))
-        }
+        BuildRef(self.add_stmt(Stmt::Build(Box::new(build))))
     }
 
     /// Create a new [`Pool`] with the name and depth and add it to this ninja file.
     /// Returns a reference of the pool for configuration, and for adding rules and builds to the
     /// pool.
     #[inline]
-    pub fn pool<SName, SDepth>(&self, name: SName, depth: SDepth) -> PoolRef<'_, TList, TRc>
+    pub fn pool<SName, SDepth>(&self, name: SName, depth: SDepth) -> PoolRef
     where
         SName: AsRef<str>,
         SDepth: Display,
@@ -120,7 +115,8 @@ impl<TList, TRc> NinjaInternal<TList, TRc> where TList: StmtList<TRc=TRc> {
     where
         SComment: AsRef<str>,
     {
-        self.stmts.add(Stmt::Comment(comment.as_ref().to_owned()));
+        self.stmts
+            .add_rc(Stmt::Comment(comment.as_ref().to_owned()));
         self
     }
 
@@ -144,7 +140,8 @@ impl<TList, TRc> NinjaInternal<TList, TRc> where TList: StmtList<TRc=TRc> {
         SName: AsRef<str>,
         SValue: AsRef<str>,
     {
-        self.stmts.add(Stmt::Variable(Variable::new(name, value)));
+        self.stmts
+            .add_rc(Stmt::Variable(Variable::new(name, value)));
         self
     }
 
@@ -152,8 +149,6 @@ impl<TList, TRc> NinjaInternal<TList, TRc> where TList: StmtList<TRc=TRc> {
     ///
     /// See <https://ninja-build.org/manual.html#_default_target_statements>
     ///
-    /// **Note that [`default`](Self::default) is a different function that is used to create
-    /// Ninja.**
     /// # Example
     /// ```rust
     /// use ninja_writer::*;
@@ -172,7 +167,7 @@ impl<TList, TRc> NinjaInternal<TList, TRc> where TList: StmtList<TRc=TRc> {
         SOutputIter: IntoIterator<Item = SOutput>,
         SOutput: AsRef<str>,
     {
-        self.stmts.add(Stmt::Default(
+        self.stmts.add_rc(Stmt::Default(
             outputs.into_iter().map(|s| s.as_ref().to_owned()).collect(),
         ));
         self
@@ -196,7 +191,7 @@ impl<TList, TRc> NinjaInternal<TList, TRc> where TList: StmtList<TRc=TRc> {
     where
         SPath: AsRef<str>,
     {
-        self.stmts.add(Stmt::Subninja(path.as_ref().to_owned()));
+        self.stmts.add_rc(Stmt::Subninja(path.as_ref().to_owned()));
         self
     }
 
@@ -223,14 +218,56 @@ impl<TList, TRc> NinjaInternal<TList, TRc> where TList: StmtList<TRc=TRc> {
     where
         SPath: AsRef<str>,
     {
-        self.stmts.add(Stmt::Include(path.as_ref().to_owned()));
+        self.stmts.add_rc(Stmt::Include(path.as_ref().to_owned()));
         self
+    }
+
+    /// Internal function to add a statement
+    pub(crate) fn add_stmt(&self, stmt: Stmt) -> StmtRef {
+        StmtRef {
+            stmt: self.stmts.add_rc(stmt),
+            list: RefCounted::clone(&self.stmts),
+        }
     }
 }
 
 impl Display for Ninja {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
-        self.stmts.fmt(f)
+        let list = &self.stmts.inner();
+        if list.is_empty() {
+            return Ok(());
+        }
+        let mut last = 0;
+        for stmt in list.iter() {
+            let stmt = stmt.as_ref();
+            // have a blank line between statement types and between rules
+            let next = stmt.ordinal() + 1;
+            if matches!(stmt, Stmt::Rule(_)) || next != last {
+                writeln!(f)?;
+            }
+            last = next;
+
+            match stmt {
+                Stmt::Rule(rule) => rule.fmt(f)?,
+                Stmt::Build(build) => build.fmt(f)?,
+                Stmt::Pool(pool) => pool.fmt(f)?,
+                Stmt::Comment(comment) => writeln!(f, "# {}", comment)?,
+                Stmt::Variable(variable) => {
+                    variable.fmt(f)?;
+                    writeln!(f)?;
+                }
+                Stmt::Default(outputs) => {
+                    write!(f, "default")?;
+                    for output in outputs {
+                        write!(f, " {}", output)?;
+                    }
+                    writeln!(f)?;
+                }
+                Stmt::Subninja(path) => writeln!(f, "subninja {}", path)?,
+                Stmt::Include(path) => writeln!(f, "include {}", path)?,
+            }
+        }
+        Ok(())
     }
 }
 
