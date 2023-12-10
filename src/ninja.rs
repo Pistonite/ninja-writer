@@ -1,23 +1,40 @@
 //! Implementation of top-level stuff
 
 use alloc::borrow::ToOwned;
-use alloc::vec::Vec;
+use alloc::sync::Arc;
+use alloc::rc::Rc;
 use core::fmt::{Display, Formatter, Result};
 
-use crate::{Build, BuildRef, Ninja, Pool, PoolRef, Rule, RuleRef, Stmt, Variable};
+use crate::{Build, BuildRef, Pool, PoolRef, Rule, RuleRef, Stmt, Variable, StmtList, StmtVec, StmtVecSync, };
 
-impl Default for Ninja {
-    fn default() -> Self {
-        Self::new()
-    }
+/// The main entry point for writing a ninja file.
+///
+/// # Examples
+/// See the [crate-level documentation](crate)
+///
+/// # Thread safety
+/// `Ninja::new` creates an instance that is not thread-safe.
+/// `NinjaSync::new` creates an instance that is safe to add statements
+/// from multiple threads.
+///
+/// See the [crate-level documentation](crate) for more examples.
+#[derive(Debug, Clone, PartialEq)]
+pub struct NinjaInternal<TList, TRc> where TList: StmtList<TRc=TRc> {
+    /// The list of statements
+    pub stmts: TList,
+
+    /// The built-in phony rule,
+    pub phony: Rule,
 }
+pub type Ninja = NinjaInternal<StmtVec, Rc<Stmt>>;
+pub type NinjaSync = NinjaInternal<StmtVecSync, Arc<Stmt>>;
 
-impl Ninja {
+impl<TList, TRc> NinjaInternal<TList, TRc> where TList: StmtList<TRc=TRc> {
     /// Create a blank ninja file
     pub fn new() -> Self {
         Self {
             phony: Rule::new("phony", ""),
-            statements: Vec::new(),
+            stmts: TList::default(),
         }
     }
 
@@ -40,12 +57,12 @@ impl Ninja {
     /// build foo.o: cc foo.c
     /// "###);
     #[inline]
-    pub fn rule<SName, SCommand>(&mut self, name: SName, command: SCommand) -> RuleRef
+    pub fn rule<SName, SCommand>(&self, name: SName, command: SCommand) -> RuleRef<'_, TList, TRc>
     where
         SName: AsRef<str>,
         SCommand: AsRef<str>,
     {
-        self.add_rule(Rule::new(name, command))
+        Rule::new(name, command).add_to(self)
     }
 
     /// Add a new build edge with the `phony` rule, used for aliasing
@@ -63,58 +80,27 @@ impl Ninja {
     /// build all: phony foo.o bar.o
     /// "###);
     /// ```
-    pub fn phony<SOutputIter, SOutput>(&mut self, outputs: SOutputIter) -> BuildRef<'_>
+    pub fn phony<SOutputIter, SOutput>(&mut self, outputs: SOutputIter) -> BuildRef<'_, TList, TRc>
     where
         SOutputIter: IntoIterator<Item = SOutput>,
         SOutput: AsRef<str>,
     {
-        self.add_build(Build::new(&self.phony, outputs))
-    }
-
-    /// Add a rule and return a reference of it for configuration
-    ///
-    /// # Note
-    /// Use this when you have created a rule with [`Rule::new`](Rule::new),
-    /// and want to add it to this ninja file.
-    ///
-    /// The returned [`RuleRef`] can be used to configure the rule and build edges
-    /// using the rule. Build edges created with this ref are automatically
-    /// added to this ninja file.
-    pub fn add_rule(&mut self, rule: Rule) -> RuleRef {
-        self.statements.push(Stmt::Rule(rule));
-        RuleRef::from(self, self.statements.len() - 1)
-    }
-
-    /// Add a build edge
-    ///
-    /// Usually you will not use this method directly, but instead,
-    /// use [`rule`](Self::rule) to create a rule
-    /// and configure build edges using the returned [`RuleRef`].
-    pub fn add_build(&mut self, build: Build) -> BuildRef<'_> {
-        self.statements.push(Stmt::Build(build));
-        match self.statements.last_mut().unwrap() {
-            Stmt::Build(build) => BuildRef(build),
-            _ => unreachable!(),
+        let build = Build::new(&self.phony, outputs);
+        BuildRef {
+            inner: self.stmts.add(Stmt::Build(build))
         }
     }
 
     /// Create a new [`Pool`] with the name and depth and add it to this ninja file.
-    /// Returns a reference of the pool for configuration.
+    /// Returns a reference of the pool for configuration, and for adding rules and builds to the
+    /// pool.
     #[inline]
-    pub fn pool<SName, SDepth>(&mut self, name: SName, depth: SDepth) -> PoolRef<'_>
+    pub fn pool<SName, SDepth>(&self, name: SName, depth: SDepth) -> PoolRef<'_, TList, TRc>
     where
         SName: AsRef<str>,
         SDepth: Display,
     {
-        self.add_pool(Pool::new(name, depth))
-    }
-
-    /// Add a pool and return a reference of it for configuration
-    ///
-    /// Usually you will use [`pool`](Self::pool) instead of this method.
-    pub fn add_pool(&mut self, pool: Pool) -> PoolRef<'_> {
-        self.statements.push(Stmt::Pool(pool));
-        PoolRef::from(self, self.statements.len() - 1)
+        Pool::new(name, depth).add_to(self)
     }
 
     /// Add a comment
@@ -126,14 +112,15 @@ impl Ninja {
     /// let mut ninja = Ninja::new();
     /// ninja.comment("This is a comment");
     ///
-    /// assert_eq!(ninja.to_string(), "\n# This is a comment\n");
+    /// assert_eq!(ninja.to_string(), r###"
+    /// ## This is a comment
+    /// "###);
     /// ```
-    pub fn comment<SComment>(&mut self, comment: SComment) -> &mut Self
+    pub fn comment<SComment>(&self, comment: SComment) -> &Self
     where
         SComment: AsRef<str>,
     {
-        self.statements
-            .push(Stmt::Comment(comment.as_ref().to_owned()));
+        self.stmts.add(Stmt::Comment(comment.as_ref().to_owned()));
         self
     }
 
@@ -152,13 +139,12 @@ impl Ninja {
     /// baz = qux $bar
     /// "###);
     /// ```
-    pub fn variable<SName, SValue>(&mut self, name: SName, value: SValue) -> &mut Self
+    pub fn variable<SName, SValue>(&self, name: SName, value: SValue) -> &Self
     where
         SName: AsRef<str>,
         SValue: AsRef<str>,
     {
-        self.statements
-            .push(Stmt::Variable(Variable::new(name, value)));
+        self.stmts.add(Stmt::Variable(Variable::new(name, value)));
         self
     }
 
@@ -170,9 +156,9 @@ impl Ninja {
     /// Ninja.**
     /// # Example
     /// ```rust
-    /// use ninja_writer::Ninja;
+    /// use ninja_writer::*;
     ///
-    /// let mut ninja = Ninja::new();
+    /// let ninja = Ninja::new();
     /// ninja.defaults(["foo", "bar"]);
     /// ninja.defaults(["baz"]);
     ///
@@ -181,12 +167,12 @@ impl Ninja {
     /// default baz
     /// "###);
     /// ```
-    pub fn defaults<SOutputIter, SOutput>(&mut self, outputs: SOutputIter) -> &mut Self
+    pub fn defaults<SOutputIter, SOutput>(&self, outputs: SOutputIter) -> &Self
     where
         SOutputIter: IntoIterator<Item = SOutput>,
         SOutput: AsRef<str>,
     {
-        self.statements.push(Stmt::Default(
+        self.stmts.add(Stmt::Default(
             outputs.into_iter().map(|s| s.as_ref().to_owned()).collect(),
         ));
         self
@@ -206,12 +192,11 @@ impl Ninja {
     /// subninja foo.ninja
     /// "###);
     /// ```
-    pub fn subninja<SPath>(&mut self, path: SPath) -> &mut Self
+    pub fn subninja<SPath>(&self, path: SPath) -> &Self
     where
         SPath: AsRef<str>,
     {
-        self.statements
-            .push(Stmt::Subninja(path.as_ref().to_owned()));
+        self.stmts.add(Stmt::Subninja(path.as_ref().to_owned()));
         self
     }
 
@@ -234,51 +219,18 @@ impl Ninja {
     /// include bar.ninja
     /// "###);
     /// ```
-    pub fn include<SPath>(&mut self, path: SPath) -> &mut Self
+    pub fn include<SPath>(&self, path: SPath) -> &Self
     where
         SPath: AsRef<str>,
     {
-        self.statements
-            .push(Stmt::Include(path.as_ref().to_owned()));
+        self.stmts.add(Stmt::Include(path.as_ref().to_owned()));
         self
     }
 }
 
 impl Display for Ninja {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
-        if self.statements.is_empty() {
-            return Ok(());
-        }
-        let mut last = 0;
-        for stmt in &self.statements {
-            // have a blank line between statement types and between rules
-            let next = stmt.ordinal() + 1;
-            if matches!(stmt, Stmt::Rule(_)) || next != last {
-                writeln!(f)?;
-            }
-            last = next;
-
-            match stmt {
-                Stmt::Rule(rule) => rule.fmt(f)?,
-                Stmt::Build(build) => build.fmt(f)?,
-                Stmt::Pool(pool) => pool.fmt(f)?,
-                Stmt::Comment(comment) => writeln!(f, "# {}", comment)?,
-                Stmt::Variable(variable) => {
-                    variable.fmt(f)?;
-                    writeln!(f)?;
-                }
-                Stmt::Default(outputs) => {
-                    write!(f, "default")?;
-                    for output in outputs {
-                        write!(f, " {}", output)?;
-                    }
-                    writeln!(f)?;
-                }
-                Stmt::Subninja(path) => writeln!(f, "subninja {}", path)?,
-                Stmt::Include(path) => writeln!(f, "include {}", path)?,
-            }
-        }
-        Ok(())
+        self.stmts.fmt(f)
     }
 }
 
@@ -289,7 +241,7 @@ mod test {
 
     #[test]
     fn test_default() {
-        let ninja = Ninja::default();
+        let ninja = Ninja::new();
         assert_eq!(ninja.to_string(), "");
     }
 

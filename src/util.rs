@@ -194,33 +194,3 @@ mod test_escape {
     }
 }
 
-/// Macro for implementing variables function
-macro_rules! implement_variables {
-    ($($x:tt)*) => {
-        /// Implementation for adding custom variables
-        /// *(generated with `implement_variables` macro)*
-        impl $($x)* {
-            /// Set a custom variable in this block
-            ///
-            /// Note that built-in variables in ninja can usually be set using the other methods.
-            pub fn variable<SName, SValue>(mut self, name: SName, value: SValue) -> Self
-            where
-                SName: AsRef<str>,
-                SValue: AsRef<str>,
-            {
-                self.variables.push($crate::Variable::new(name, value));
-                self
-            }
-        }
-    }
-
-}
-pub(crate) use implement_variables;
-
-/// Macro for adding a built-in variable
-macro_rules! add_variable {
-    ($variables:expr, $name:literal, $value:expr) => {{
-        $variables.push($crate::Variable::new($name, $value));
-    }};
-}
-pub(crate) use add_variable;
