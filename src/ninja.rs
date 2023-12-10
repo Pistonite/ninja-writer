@@ -1,6 +1,7 @@
 //! Implementation of top-level stuff
 
 use alloc::borrow::ToOwned;
+use alloc::boxed::Box;
 use core::fmt::{Display, Formatter, Result};
 
 use crate::stmt::{Stmt, StmtRef};

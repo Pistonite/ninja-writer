@@ -1,6 +1,7 @@
 //! Implementation of the `rule` keyword
 
 use alloc::borrow::ToOwned;
+use alloc::boxed::Box;
 use alloc::string::String;
 use core::fmt::{Display, Formatter, Result};
 use core::ops::Deref;
