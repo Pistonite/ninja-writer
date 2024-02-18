@@ -1,5 +1,7 @@
 //! Implementation of variables
 
+use crate::{MaybeOs, MaybeOsDisplay};
+
 use alloc::borrow::ToOwned;
 use alloc::string::String;
 use core::fmt::{Display, Formatter, Result};
@@ -22,7 +24,7 @@ pub struct Variable {
     /// The name of the variable
     pub name: String,
     /// The value of the variable
-    pub value: String,
+    pub value: MaybeOs!(String),
 }
 
 impl Variable {
@@ -30,7 +32,7 @@ impl Variable {
     pub fn new<SName, SValue>(name: SName, value: SValue) -> Self
     where
         SName: AsRef<str>,
-        SValue: AsRef<str>,
+        SValue: AsRef<MaybeOs!(str)>,
     {
         Self {
             name: name.as_ref().to_owned(),
@@ -41,7 +43,7 @@ impl Variable {
 
 impl Display for Variable {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
-        write!(f, "{} = {}", self.name, self.value)
+        write!(f, "{} = {}", self.name, MaybeOsDisplay!(&self.value))
     }
 }
 
@@ -56,7 +58,7 @@ pub trait Variables: Sized {
     fn variable<SName, SValue>(self, name: SName, value: SValue) -> Self
     where
         SName: AsRef<str>,
-        SValue: AsRef<str>,
+        SValue: AsRef<MaybeOs!(str)>,
     {
         self.add_variable_internal(Variable::new(name, value));
         self

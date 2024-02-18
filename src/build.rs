@@ -7,6 +7,7 @@ use core::ops::Deref;
 
 use crate::stmt::{Stmt, StmtRef};
 use crate::util::{AddOnlyVec, Indented, RefCounted};
+use crate::{MaybeOs, MaybeOsDisplay};
 use crate::{Rule, RuleVariables, Variable, Variables};
 
 /// A build edge, as defined by the `build` keyword
@@ -36,32 +37,32 @@ pub struct Build {
     pub rule: RefCounted<String>,
 
     /// The list of outputs, as defined by `build <outputs>:`
-    pub outputs: AddOnlyVec<String>,
+    pub outputs: AddOnlyVec<MaybeOs!(String)>,
 
     /// The list of implicit outputs.
     ///
     /// See <https://ninja-build.org/manual.html#ref_outputs>
-    pub implicit_outputs: AddOnlyVec<String>,
+    pub implicit_outputs: AddOnlyVec<MaybeOs!(String)>,
 
     /// The list of dependencies (inputs).
     ///
     /// See <https://ninja-build.org/manual.html#ref_dependencies>
-    pub dependencies: AddOnlyVec<String>,
+    pub dependencies: AddOnlyVec<MaybeOs!(String)>,
 
     /// The list of implicit dependencies (inputs).
     ///
     /// See <https://ninja-build.org/manual.html#ref_dependencies>
-    pub implicit_dependencies: AddOnlyVec<String>,
+    pub implicit_dependencies: AddOnlyVec<MaybeOs!(String)>,
 
     /// The list of order-only dependencies (inputs).
     ///
     /// See <https://ninja-build.org/manual.html#ref_dependencies>
-    pub order_only_dependencies: AddOnlyVec<String>,
+    pub order_only_dependencies: AddOnlyVec<MaybeOs!(String)>,
 
     /// The list of validations.
     ///
     /// See <https://ninja-build.org/manual.html#validations>
-    pub validations: AddOnlyVec<String>,
+    pub validations: AddOnlyVec<MaybeOs!(String)>,
 
     /// The list of variables, as an indented block
     pub variables: AddOnlyVec<Variable>,
@@ -92,7 +93,7 @@ pub trait BuildVariables: Variables {
     #[inline]
     fn dyndep<SDyndep>(self, dyndep: SDyndep) -> Self
     where
-        SDyndep: AsRef<str>,
+        SDyndep: AsRef<MaybeOs!(str)>,
     {
         self.variable("dyndep", dyndep)
     }
@@ -116,7 +117,7 @@ pub trait BuildVariables: Variables {
     fn with<SInputIter, SInput>(self, inputs: SInputIter) -> Self
     where
         SInputIter: IntoIterator<Item = SInput>,
-        SInput: AsRef<str>,
+        SInput: AsRef<MaybeOs!(str)>,
     {
         self.as_build()
             .dependencies
@@ -146,7 +147,7 @@ pub trait BuildVariables: Variables {
     fn with_implicit<SInputIter, SInput>(self, inputs: SInputIter) -> Self
     where
         SInputIter: IntoIterator<Item = SInput>,
-        SInput: AsRef<str>,
+        SInput: AsRef<MaybeOs!(str)>,
     {
         self.as_build()
             .implicit_dependencies
@@ -177,7 +178,7 @@ pub trait BuildVariables: Variables {
     fn with_order_only<SInputIter, SInput>(self, inputs: SInputIter) -> Self
     where
         SInputIter: IntoIterator<Item = SInput>,
-        SInput: AsRef<str>,
+        SInput: AsRef<MaybeOs!(str)>,
     {
         self.as_build()
             .order_only_dependencies
@@ -209,7 +210,7 @@ pub trait BuildVariables: Variables {
     fn validations<SValidationIter, SValidation>(self, validations: SValidationIter) -> Self
     where
         SValidationIter: IntoIterator<Item = SValidation>,
-        SValidation: AsRef<str>,
+        SValidation: AsRef<MaybeOs!(str)>,
     {
         self.as_build()
             .validations
@@ -242,7 +243,7 @@ pub trait BuildVariables: Variables {
     fn output_implicit<SOutputIter, SOutput>(self, outputs: SOutputIter) -> Self
     where
         SOutputIter: IntoIterator<Item = SOutput>,
-        SOutput: AsRef<str>,
+        SOutput: AsRef<MaybeOs!(str)>,
     {
         self.as_build()
             .implicit_outputs
@@ -277,7 +278,7 @@ impl Build {
     pub fn new<SOutputIter, SOutput>(rule: &Rule, outputs: SOutputIter) -> Self
     where
         SOutputIter: IntoIterator<Item = SOutput>,
-        SOutput: AsRef<str>,
+        SOutput: AsRef<MaybeOs!(str)>,
     {
         let self_outputs = AddOnlyVec::new();
         self_outputs.extend(outputs.into_iter().map(|s| s.as_ref().to_owned()));
@@ -328,27 +329,27 @@ impl Display for Build {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         write!(f, "build")?;
         for output in self.outputs.inner().iter() {
-            write!(f, " {}", output)?;
+            write!(f, " {}", MaybeOsDisplay!(output))?;
         }
         {
             let implicit_outputs = self.implicit_outputs.inner();
             if !implicit_outputs.is_empty() {
                 write!(f, " |")?;
                 for output in implicit_outputs.iter() {
-                    write!(f, " {}", output)?;
+                    write!(f, " {}", MaybeOsDisplay!(output))?;
                 }
             }
         }
         write!(f, ": {}", self.rule)?;
         for input in self.dependencies.inner().iter() {
-            write!(f, " {}", input)?;
+            write!(f, " {}", MaybeOsDisplay!(input))?;
         }
         {
             let implicit_dependencies = self.implicit_dependencies.inner();
             if !implicit_dependencies.is_empty() {
                 write!(f, " |")?;
                 for input in implicit_dependencies.iter() {
-                    write!(f, " {}", input)?;
+                    write!(f, " {}", MaybeOsDisplay!(input))?;
                 }
             }
         }
@@ -357,7 +358,7 @@ impl Display for Build {
             if !order_only_dependencies.is_empty() {
                 write!(f, " ||")?;
                 for input in order_only_dependencies.iter() {
-                    write!(f, " {}", input)?;
+                    write!(f, " {}", MaybeOsDisplay!(input))?;
                 }
             }
         }
@@ -366,7 +367,7 @@ impl Display for Build {
             if !validations.is_empty() {
                 write!(f, " |@")?;
                 for input in validations.iter() {
-                    write!(f, " {}", input)?;
+                    write!(f, " {}", MaybeOsDisplay!(input))?;
                 }
             }
         }

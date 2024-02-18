@@ -8,7 +8,7 @@ use core::ops::Deref;
 
 use crate::stmt::{Stmt, StmtRef};
 use crate::util::{AddOnlyVec, Indented, RefCounted};
-use crate::{Build, BuildRef, Ninja, Pool, Variable, Variables};
+use crate::{Build, BuildRef, MaybeOs, Ninja, Pool, Variable, Variables};
 
 /// A rule, as defined by the `rule` keyword
 ///
@@ -147,7 +147,7 @@ pub trait RuleVariables: Variables {
     #[inline]
     fn depfile<SDepfile>(self, depfile: SDepfile) -> Self
     where
-        SDepfile: AsRef<str>,
+        SDepfile: AsRef<MaybeOs!(str)>,
     {
         self.variable("depfile", depfile)
     }
@@ -191,7 +191,7 @@ pub trait RuleVariables: Variables {
     /// ```
     fn deps_msvc_prefix<SMsvcDepsPrefix>(self, msvc_deps_prefix: SMsvcDepsPrefix) -> Self
     where
-        SMsvcDepsPrefix: AsRef<str>,
+        SMsvcDepsPrefix: AsRef<MaybeOs!(str)>,
     {
         self.deps_msvc()
             .variable("msvc_deps_prefix", msvc_deps_prefix)
@@ -239,7 +239,7 @@ pub trait RuleVariables: Variables {
     where
         SDesc: AsRef<str>,
     {
-        self.variable("description", desc)
+        self.variable("description", MaybeOs!(&desc))
     }
 
     /// Indicate the rule is used to re-invoke the generator
@@ -288,7 +288,7 @@ pub trait RuleVariables: Variables {
     #[inline]
     fn in_newline<SIn>(self, in_newline: SIn) -> Self
     where
-        SIn: AsRef<str>,
+        SIn: AsRef<MaybeOs!(str)>,
     {
         self.variable("in_newline", in_newline)
     }
@@ -336,11 +336,11 @@ pub trait RuleVariables: Variables {
         rspfile_content: SRspfileContent,
     ) -> Self
     where
-        SRspfile: AsRef<str>,
+        SRspfile: AsRef<MaybeOs!(str)>,
         SRspfileContent: AsRef<str>,
     {
         self.variable("rspfile", rspfile)
-            .variable("rspfile_content", rspfile_content)
+            .variable("rspfile_content", MaybeOs!(&rspfile_content))
     }
 
     /// Set `pool = console` for this `rule` or `build`
@@ -425,7 +425,7 @@ impl RuleRef {
     pub fn build<SOutputIter, SOutput>(&self, outputs: SOutputIter) -> BuildRef
     where
         SOutputIter: IntoIterator<Item = SOutput>,
-        SOutput: AsRef<str>,
+        SOutput: AsRef<MaybeOs!(str)>,
     {
         let build = Build::new(self.deref(), outputs);
         BuildRef(self.0.add(Stmt::Build(Box::new(build))))
@@ -443,7 +443,7 @@ impl Rule {
             name: RefCounted::new(name.as_ref().to_owned()),
             variables: AddOnlyVec::new(),
         };
-        s.variable("command", command)
+        s.variable("command", MaybeOs!(&command))
     }
 
     /// Add the rule to a ninja file and return a [`RuleRef`] for further configuration
