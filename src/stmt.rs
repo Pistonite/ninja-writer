@@ -6,7 +6,7 @@ use alloc::vec::Vec;
 use core::ops::Deref;
 
 use crate::util::{AddOnlyVec, RefCounted};
-use crate::{Build, Pool, Rule, Variable};
+use crate::{Build, MaybeOs, Pool, Rule, Variable};
 
 /// A top-level ninja statement
 #[derive(Debug)]
@@ -32,16 +32,16 @@ pub enum Stmt {
     /// A default statement
     ///
     /// See <https://ninja-build.org/manual.html#_default_target_statements>
-    Default(Vec<String>),
+    Default(Vec<MaybeOs!(String)>),
     /// A subninja statement
     ///
     /// See <https://ninja-build.org/manual.html#ref_scope>
-    Subninja(String),
+    Subninja(MaybeOs!(String)),
 
     /// An include statement (like subninja, but doesn't create a new scope)
     ///
     /// See <https://ninja-build.org/manual.html#ref_scope>
-    Include(String),
+    Include(MaybeOs!(String)),
 
     /// A pool declaration
     ///

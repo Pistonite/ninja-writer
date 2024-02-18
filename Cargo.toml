@@ -20,3 +20,4 @@ exclude = [
 default = ["std"]
 std = []
 thread-safe = ["std"]
+os-string = ["std"]

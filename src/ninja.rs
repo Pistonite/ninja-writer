@@ -6,7 +6,7 @@ use core::fmt::{Display, Formatter, Result};
 
 use crate::stmt::{Stmt, StmtRef};
 use crate::util::{AddOnlyVec, RefCounted};
-use crate::{Build, BuildRef, Pool, PoolRef, Rule, RuleRef, Variable};
+use crate::{Build, BuildRef, MaybeOs, MaybeOsDisplay, Pool, PoolRef, Rule, RuleRef, Variable};
 
 /// The main entry point for writing a ninja file.
 ///
@@ -81,7 +81,7 @@ impl Ninja {
     pub fn phony<SOutputIter, SOutput>(&self, outputs: SOutputIter) -> BuildRef
     where
         SOutputIter: IntoIterator<Item = SOutput>,
-        SOutput: AsRef<str>,
+        SOutput: AsRef<MaybeOs!(str)>,
     {
         let build = Build::new(&self.phony, outputs);
         BuildRef(self.add_stmt(Stmt::Build(Box::new(build))))
@@ -139,7 +139,7 @@ impl Ninja {
     pub fn variable<SName, SValue>(&self, name: SName, value: SValue) -> &Self
     where
         SName: AsRef<str>,
-        SValue: AsRef<str>,
+        SValue: AsRef<MaybeOs!(str)>,
     {
         self.stmts
             .add_rc(Stmt::Variable(Variable::new(name, value)));
@@ -166,7 +166,7 @@ impl Ninja {
     pub fn defaults<SOutputIter, SOutput>(&self, outputs: SOutputIter) -> &Self
     where
         SOutputIter: IntoIterator<Item = SOutput>,
-        SOutput: AsRef<str>,
+        SOutput: AsRef<MaybeOs!(str)>,
     {
         self.stmts.add_rc(Stmt::Default(
             outputs.into_iter().map(|s| s.as_ref().to_owned()).collect(),
@@ -190,7 +190,7 @@ impl Ninja {
     /// ```
     pub fn subninja<SPath>(&self, path: SPath) -> &Self
     where
-        SPath: AsRef<str>,
+        SPath: AsRef<MaybeOs!(str)>,
     {
         self.stmts.add_rc(Stmt::Subninja(path.as_ref().to_owned()));
         self
@@ -217,7 +217,7 @@ impl Ninja {
     /// ```
     pub fn include<SPath>(&self, path: SPath) -> &Self
     where
-        SPath: AsRef<str>,
+        SPath: AsRef<MaybeOs!(str)>,
     {
         self.stmts.add_rc(Stmt::Include(path.as_ref().to_owned()));
         self
@@ -260,12 +260,12 @@ impl Display for Ninja {
                 Stmt::Default(outputs) => {
                     write!(f, "default")?;
                     for output in outputs {
-                        write!(f, " {}", output)?;
+                        write!(f, " {}", MaybeOsDisplay!(output))?;
                     }
                     writeln!(f)?;
                 }
-                Stmt::Subninja(path) => writeln!(f, "subninja {}", path)?,
-                Stmt::Include(path) => writeln!(f, "include {}", path)?,
+                Stmt::Subninja(path) => writeln!(f, "subninja {}", MaybeOsDisplay!(path))?,
+                Stmt::Include(path) => writeln!(f, "include {}", MaybeOsDisplay!(path))?,
             }
         }
         Ok(())

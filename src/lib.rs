@@ -185,6 +185,8 @@ pub mod stmt;
 pub mod util;
 pub mod variable;
 
+mod internal;
+
 // Re-exports
 pub use build::{Build, BuildRef, BuildVariables};
 pub use ninja::Ninja;
