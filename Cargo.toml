@@ -1,11 +1,11 @@
 [package]
 name = "ninja-writer"
-version = "0.2.0"
+version = "0.3.0"
 description = "Simple and ergonomic library for writing Ninja build files"
 edition = "2021"
 repository = "https://github.com/Pistonite/ninja-writer"
 license = "MIT"
-authors = ["Pistonight <terrabyte100k@gmail.com>"]
+authors = ["Pistonight <pistonknight@outlook.com>"]
 keywords = ["ninja", "build", "syntax", "generator", "build-system"]
 categories = ["development-tools::build-utils", "development-tools"]
 exclude = [
