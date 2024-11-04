@@ -7,8 +7,8 @@
 //! Library for writing [ninja](https://ninja-build.org) build files with a focus on
 //! ergonomics and simplicity.
 //!
-//! However, one slight negative is that Rust requires a trait to be in scope to use.
-//! Therefore, it is recommended to import `*` from the crate, so that all the traits
+//! Since Rust requires a trait to be in scope to use,
+//! it is recommended to import `*` from the crate, so that all the traits
 //! are in scope.
 //! ```rust
 //! use ninja_writer::*;
@@ -74,6 +74,24 @@
 //! "###);
 //! ```
 //!
+//! ## Encoding
+//! Because `.to_string()` is used to get the output, All inputs/outputs are expected to be UTF-8
+//! encoded. Utilities like [`ToArg`] will panic for `std` types if the input is not valid UTF-8.
+//!
+//! ## Args and lists
+//! All functions take implementation of [`ToArg`] as parameters.
+//! This trait is implemented for common Rust types like [`Path`](std::path::Path) and
+//! [`String`].
+//!
+//! For functions that take a list of arguments (such as [`build`](RuleRef::build)),
+//! the types of the elements in the slice must be the same due to Rust's type system restrictions.
+//! ```compile_fail
+//! // This won't compile
+//! let args = [1, "bar"];
+//! ```
+//! The [`args`] macro is provided to workaround this limitation.
+//!
+//!
 //! ## `std` feature
 //! You can disable the `std` feature to make the library `no_std` compatible. I don't know why you
 //! want to do that, but it's here just in case.
@@ -135,25 +153,6 @@
 //! assert_eq!(escape_build("foo: bar"), "foo$:$ bar");
 //! ```
 //!
-//! ## Arg lists
-//! For functions that take a list of arguments (such as [`build`](RuleRef::build)),
-//! the types of the elements in the slice must be the same due to Rust's type system restrictions.
-//! ```compile_fail
-//! // This won't compile
-//! let foo = "foo".to_string();
-//! let args = [foo, "bar"];
-//! ```
-//! You can either call `.as_ref()` on each element to convert them to `&str`s,
-//! or define a simple macro to do this for you to avoid sprinkling `.as_ref()` everywhere.
-//! ```rust
-//! macro_rules! refs {
-//!     ($($x:expr),* $(,)?) => {
-//!          vec![$($x.as_ref()),*]
-//!     }
-//! }
-//! ```
-//! This can be useful if you have custom types that implement `AsRef<str>`.
-//!
 //! ## Duplicated variables
 //! Duplicates are not checked, since ninja allows it.
 //! ```rust
@@ -177,15 +176,25 @@
 
 extern crate alloc;
 
+#[doc(hidden)]
+pub mod arg;
+#[doc(hidden)]
 pub mod build;
+#[doc(hidden)]
 pub mod ninja;
+#[doc(hidden)]
 pub mod pool;
+#[doc(hidden)]
 pub mod rule;
+#[doc(hidden)]
 pub mod stmt;
+#[doc(hidden)]
 pub mod util;
+#[doc(hidden)]
 pub mod variable;
 
 // Re-exports
+pub use arg::ToArg;
 pub use build::{Build, BuildRef, BuildVariables};
 pub use ninja::Ninja;
 pub use pool::{Pool, PoolRef};

@@ -14,4 +14,11 @@ tasks:
     - cargo clippy --all-features -- -Dwarnings
     - cargo fmt --check
 
+  doc:
+    desc: Host docs live
+    cmds:
+    - cargo doc
+    - live-server -p 8081 target/doc &
+    - cargo watch -x doc
+
 
