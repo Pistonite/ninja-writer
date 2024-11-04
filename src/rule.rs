@@ -267,32 +267,6 @@ pub trait RuleVariables: Variables {
         self.variable("generator", "1")
     }
 
-    /// Specify the `in_newline` variable for the `rule` or `build`
-    ///
-    /// See <https://ninja-build.org/manual.html#ref_rule>
-    ///
-    /// # Example
-    /// ```rust
-    /// use ninja_writer::*;
-    ///
-    /// let ninja = Ninja::new();
-    /// ninja.rule("example", "...")
-    ///    .in_newline("foo");
-    ///
-    /// assert_eq!(ninja.to_string(), r###"
-    /// rule example
-    ///   command = ...
-    ///   in_newline = foo
-    /// "###);
-    /// ```
-    #[inline]
-    fn in_newline<SIn>(self, in_newline: SIn) -> Self
-    where
-        SIn: AsRef<str>,
-    {
-        self.variable("in_newline", in_newline)
-    }
-
     /// Specify `restat = 1` for the `rule` or `build`
     ///
     /// # Example
