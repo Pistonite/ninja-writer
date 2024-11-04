@@ -1,6 +1,5 @@
 //! Implementation of the `rule` keyword
 
-use alloc::borrow::ToOwned;
 use alloc::boxed::Box;
 use alloc::string::String;
 use core::fmt::{Display, Formatter, Result};
@@ -8,7 +7,7 @@ use core::ops::Deref;
 
 use crate::stmt::{Stmt, StmtRef};
 use crate::util::{AddOnlyVec, Indented, RefCounted};
-use crate::{Build, BuildRef, Ninja, Pool, Variable, Variables};
+use crate::{Build, BuildRef, Ninja, Pool, ToArg, Variable, Variables};
 
 /// A rule, as defined by the `rule` keyword
 ///
@@ -145,10 +144,7 @@ pub trait RuleVariables: Variables {
     /// "###);
     /// ```
     #[inline]
-    fn depfile<SDepfile>(self, depfile: SDepfile) -> Self
-    where
-        SDepfile: AsRef<str>,
-    {
+    fn depfile(self, depfile: impl ToArg) -> Self {
         self.variable("depfile", depfile)
     }
 
@@ -189,10 +185,7 @@ pub trait RuleVariables: Variables {
     ///   deps = msvc
     ///   msvc_deps_prefix = Note: including file: {}"###, "\n"));
     /// ```
-    fn deps_msvc_prefix<SMsvcDepsPrefix>(self, msvc_deps_prefix: SMsvcDepsPrefix) -> Self
-    where
-        SMsvcDepsPrefix: AsRef<str>,
-    {
+    fn deps_msvc_prefix(self, msvc_deps_prefix: impl ToArg) -> Self {
         self.deps_msvc()
             .variable("msvc_deps_prefix", msvc_deps_prefix)
     }
@@ -235,10 +228,7 @@ pub trait RuleVariables: Variables {
     /// "###);
     /// ```
     #[inline]
-    fn description<SDesc>(self, desc: SDesc) -> Self
-    where
-        SDesc: AsRef<str>,
-    {
+    fn description(self, desc: impl ToArg) -> Self {
         self.variable("description", desc)
     }
 
@@ -304,15 +294,7 @@ pub trait RuleVariables: Variables {
     ///   rspfile_content = bar
     /// "###);
     /// ```
-    fn rspfile<SRspfile, SRspfileContent>(
-        self,
-        rspfile: SRspfile,
-        rspfile_content: SRspfileContent,
-    ) -> Self
-    where
-        SRspfile: AsRef<str>,
-        SRspfileContent: AsRef<str>,
-    {
+    fn rspfile(self, rspfile: impl ToArg, rspfile_content: impl ToArg) -> Self {
         self.variable("rspfile", rspfile)
             .variable("rspfile_content", rspfile_content)
     }
@@ -361,10 +343,7 @@ pub trait RuleVariables: Variables {
     /// "###);
     /// ```
     #[inline]
-    fn pool<TPool>(self, pool: TPool) -> Self
-    where
-        TPool: AsRef<Pool>,
-    {
+    fn pool(self, pool: impl AsRef<Pool>) -> Self {
         self.variable("pool", &pool.as_ref().name)
     }
 }
@@ -379,7 +358,8 @@ impl Deref for RuleRef {
     fn deref(&self) -> &Self::Target {
         match self.0.deref().deref() {
             Stmt::Rule(r) => r,
-            _ => panic!("Expected rule statement"),
+            // safety: RuleRef is only constructable within this crate
+            _ => unreachable!(),
         }
     }
 }
@@ -396,11 +376,7 @@ impl RuleRef {
     ///
     /// # Example
     /// See [`Rule`]
-    pub fn build<SOutputIter, SOutput>(&self, outputs: SOutputIter) -> BuildRef
-    where
-        SOutputIter: IntoIterator<Item = SOutput>,
-        SOutput: AsRef<str>,
-    {
+    pub fn build(&self, outputs: impl IntoIterator<Item = impl ToArg>) -> BuildRef {
         let build = Build::new(self.deref(), outputs);
         BuildRef(self.0.add(Stmt::Build(Box::new(build))))
     }
@@ -408,13 +384,9 @@ impl RuleRef {
 
 impl Rule {
     /// Create a new rule with the given name and command
-    pub fn new<SName, SCommand>(name: SName, command: SCommand) -> Self
-    where
-        SName: AsRef<str>,
-        SCommand: AsRef<str>,
-    {
+    pub fn new(name: impl ToArg, command: impl ToArg) -> Self {
         let s = Self {
-            name: RefCounted::new(name.as_ref().to_owned()),
+            name: RefCounted::new(name.to_arg()),
             variables: AddOnlyVec::new(),
         };
         s.variable("command", command)

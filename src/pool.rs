@@ -1,14 +1,12 @@
 //! Implementation of the `pool` keyword
 
-use alloc::borrow::ToOwned;
-use alloc::format;
 use alloc::string::String;
 use core::fmt::{Display, Formatter, Result};
 use core::ops::Deref;
 
 use crate::stmt::{Stmt, StmtRef};
 use crate::util::{AddOnlyVec, Indented};
-use crate::{Ninja, Variable, Variables};
+use crate::{Ninja, ToArg, Variable, Variables};
 
 /// A pool, as defined by the `pool` keyword
 ///
@@ -53,7 +51,8 @@ impl Deref for PoolRef {
     fn deref(&self) -> &Self::Target {
         match self.0.deref().deref() {
             Stmt::Pool(p) => p,
-            _ => panic!("Expected pool statement"),
+            // safety: PoolRef is only constructable within this crate
+            _ => unreachable!(),
         }
     }
 }
@@ -66,16 +65,12 @@ impl AsRef<Pool> for PoolRef {
 
 impl Pool {
     /// Create a pool with a given name and depth
-    pub fn new<SName, SDepth>(name: SName, depth: SDepth) -> Self
-    where
-        SName: AsRef<str>,
-        SDepth: Display,
-    {
+    pub fn new(name: impl ToArg, depth: usize) -> Self {
         let x = Self {
-            name: name.as_ref().to_owned(),
+            name: name.to_arg(),
             variables: AddOnlyVec::new(),
         };
-        x.variable("depth", format!("{depth}"))
+        x.variable("depth", depth)
     }
 
     /// Add the pool to a ninja file

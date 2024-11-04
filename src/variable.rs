@@ -1,8 +1,9 @@
 //! Implementation of variables
 
-use alloc::borrow::ToOwned;
 use alloc::string::String;
 use core::fmt::{Display, Formatter, Result};
+
+use crate::ToArg;
 
 /// A variable declaration (`name = value`)
 ///
@@ -27,14 +28,10 @@ pub struct Variable {
 
 impl Variable {
     /// Create a new variable declaration
-    pub fn new<SName, SValue>(name: SName, value: SValue) -> Self
-    where
-        SName: AsRef<str>,
-        SValue: AsRef<str>,
-    {
+    pub fn new(name: impl ToArg, value: impl ToArg) -> Self {
         Self {
-            name: name.as_ref().to_owned(),
-            value: value.as_ref().to_owned(),
+            name: name.to_arg(),
+            value: value.to_arg(),
         }
     }
 }
@@ -53,11 +50,7 @@ pub trait Variables: Sized {
     fn add_variable_internal(&self, v: Variable);
 
     /// Add a variable to the current scope
-    fn variable<SName, SValue>(self, name: SName, value: SValue) -> Self
-    where
-        SName: AsRef<str>,
-        SValue: AsRef<str>,
-    {
+    fn variable(self, name: impl ToArg, value: impl ToArg) -> Self {
         self.add_variable_internal(Variable::new(name, value));
         self
     }

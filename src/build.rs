@@ -1,13 +1,12 @@
 //! Implementation of the `build` keyword
 
-use alloc::borrow::ToOwned;
 use alloc::string::String;
 use core::fmt::{Display, Formatter, Result};
 use core::ops::Deref;
 
 use crate::stmt::{Stmt, StmtRef};
 use crate::util::{AddOnlyVec, Indented, RefCounted};
-use crate::{Rule, RuleVariables, Variable, Variables};
+use crate::{Rule, RuleVariables, ToArg, Variable, Variables};
 
 /// A build edge, as defined by the `build` keyword
 ///
@@ -90,10 +89,7 @@ pub trait BuildVariables: Variables {
     /// "###);
     /// ```
     #[inline]
-    fn dyndep<SDyndep>(self, dyndep: SDyndep) -> Self
-    where
-        SDyndep: AsRef<str>,
-    {
+    fn dyndep(self, dyndep: impl ToArg) -> Self {
         self.variable("dyndep", dyndep)
     }
 
@@ -113,14 +109,10 @@ pub trait BuildVariables: Variables {
     ///
     /// build foo: example bar baz
     /// "###);
-    fn with<SInputIter, SInput>(self, inputs: SInputIter) -> Self
-    where
-        SInputIter: IntoIterator<Item = SInput>,
-        SInput: AsRef<str>,
-    {
+    fn with(self, inputs: impl IntoIterator<Item = impl ToArg>) -> Self {
         self.as_build()
             .dependencies
-            .extend(inputs.into_iter().map(|s| s.as_ref().to_owned()));
+            .extend(inputs.into_iter().map(|s| s.to_arg()));
         self
     }
 
@@ -143,14 +135,10 @@ pub trait BuildVariables: Variables {
     ///
     /// build foo: example bar baz | qux
     /// "###);
-    fn with_implicit<SInputIter, SInput>(self, inputs: SInputIter) -> Self
-    where
-        SInputIter: IntoIterator<Item = SInput>,
-        SInput: AsRef<str>,
-    {
+    fn with_implicit(self, inputs: impl IntoIterator<Item = impl ToArg>) -> Self {
         self.as_build()
             .implicit_dependencies
-            .extend(inputs.into_iter().map(|s| s.as_ref().to_owned()));
+            .extend(inputs.into_iter().map(|s| s.to_arg()));
         self
     }
 
@@ -174,14 +162,10 @@ pub trait BuildVariables: Variables {
     ///
     /// build foo: example bar baz | qux || oo
     /// "###);
-    fn with_order_only<SInputIter, SInput>(self, inputs: SInputIter) -> Self
-    where
-        SInputIter: IntoIterator<Item = SInput>,
-        SInput: AsRef<str>,
-    {
+    fn with_order_only(self, inputs: impl IntoIterator<Item = impl ToArg>) -> Self {
         self.as_build()
             .order_only_dependencies
-            .extend(inputs.into_iter().map(|s| s.as_ref().to_owned()));
+            .extend(inputs.into_iter().map(|s| s.to_arg()));
         self
     }
 
@@ -206,14 +190,10 @@ pub trait BuildVariables: Variables {
     ///
     /// build foo: example bar baz | qux || oo |@ quux
     /// "###);
-    fn validations<SValidationIter, SValidation>(self, validations: SValidationIter) -> Self
-    where
-        SValidationIter: IntoIterator<Item = SValidation>,
-        SValidation: AsRef<str>,
-    {
+    fn validations(self, validations: impl IntoIterator<Item = impl ToArg>) -> Self {
         self.as_build()
             .validations
-            .extend(validations.into_iter().map(|s| s.as_ref().to_owned()));
+            .extend(validations.into_iter().map(|s| s.to_arg()));
         self
     }
 
@@ -239,14 +219,10 @@ pub trait BuildVariables: Variables {
     ///
     /// build foo | iii: example bar baz | qux || oo |@ quux
     /// "###);
-    fn output_implicit<SOutputIter, SOutput>(self, outputs: SOutputIter) -> Self
-    where
-        SOutputIter: IntoIterator<Item = SOutput>,
-        SOutput: AsRef<str>,
-    {
+    fn output_implicit(self, outputs: impl IntoIterator<Item = impl ToArg>) -> Self {
         self.as_build()
             .implicit_outputs
-            .extend(outputs.into_iter().map(|s| s.as_ref().to_owned()));
+            .extend(outputs.into_iter().map(|s| s.to_arg()));
         self
     }
 }
@@ -260,7 +236,8 @@ impl Deref for BuildRef {
     fn deref(&self) -> &Self::Target {
         match self.0.deref().deref() {
             Stmt::Build(b) => b,
-            _ => panic!("Expected build statement"),
+            // safety: BuildRef is only constructable from this crate
+            _ => unreachable!(),
         }
     }
 }
@@ -274,13 +251,9 @@ impl AsRef<Build> for BuildRef {
 
 impl Build {
     /// Create a new build with the given explicit outputs and rule
-    pub fn new<SOutputIter, SOutput>(rule: &Rule, outputs: SOutputIter) -> Self
-    where
-        SOutputIter: IntoIterator<Item = SOutput>,
-        SOutput: AsRef<str>,
-    {
+    pub fn new(rule: &Rule, outputs: impl IntoIterator<Item = impl ToArg>) -> Self {
         let self_outputs = AddOnlyVec::new();
-        self_outputs.extend(outputs.into_iter().map(|s| s.as_ref().to_owned()));
+        self_outputs.extend(outputs.into_iter().map(|s| s.to_arg()));
         Self {
             rule: RefCounted::clone(&rule.name),
             outputs: self_outputs,

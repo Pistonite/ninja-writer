@@ -1,12 +1,11 @@
 //! Implementation of top-level stuff
 
-use alloc::borrow::ToOwned;
 use alloc::boxed::Box;
 use core::fmt::{Display, Formatter, Result};
 
 use crate::stmt::{Stmt, StmtRef};
 use crate::util::{AddOnlyVec, RefCounted};
-use crate::{Build, BuildRef, Pool, PoolRef, Rule, RuleRef, Variable};
+use crate::{Build, BuildRef, Pool, PoolRef, Rule, RuleRef, ToArg, Variable};
 
 /// The main entry point for writing a ninja file.
 ///
@@ -55,11 +54,7 @@ impl Ninja {
     /// build foo.o: cc foo.c
     /// "###);
     #[inline]
-    pub fn rule<SName, SCommand>(&self, name: SName, command: SCommand) -> RuleRef
-    where
-        SName: AsRef<str>,
-        SCommand: AsRef<str>,
-    {
+    pub fn rule(&self, name: impl ToArg, command: impl ToArg) -> RuleRef {
         Rule::new(name, command).add_to(self)
     }
 
@@ -78,11 +73,7 @@ impl Ninja {
     /// build all: phony foo.o bar.o
     /// "###);
     /// ```
-    pub fn phony<SOutputIter, SOutput>(&self, outputs: SOutputIter) -> BuildRef
-    where
-        SOutputIter: IntoIterator<Item = SOutput>,
-        SOutput: AsRef<str>,
-    {
+    pub fn phony(&self, outputs: impl IntoIterator<Item = impl ToArg>) -> BuildRef {
         let build = Build::new(&self.phony, outputs);
         BuildRef(self.add_stmt(Stmt::Build(Box::new(build))))
     }
@@ -91,11 +82,7 @@ impl Ninja {
     /// Returns a reference of the pool for configuration, and for adding rules and builds to the
     /// pool.
     #[inline]
-    pub fn pool<SName, SDepth>(&self, name: SName, depth: SDepth) -> PoolRef
-    where
-        SName: AsRef<str>,
-        SDepth: Display,
-    {
+    pub fn pool(&self, name: impl ToArg, depth: usize) -> PoolRef {
         Pool::new(name, depth).add_to(self)
     }
 
@@ -112,12 +99,8 @@ impl Ninja {
     /// ## This is a comment
     /// "###);
     /// ```
-    pub fn comment<SComment>(&self, comment: SComment) -> &Self
-    where
-        SComment: AsRef<str>,
-    {
-        self.stmts
-            .add_rc(Stmt::Comment(comment.as_ref().to_owned()));
+    pub fn comment(&self, comment: impl ToArg) -> &Self {
+        self.stmts.add_rc(Stmt::Comment(comment.to_arg()));
         self
     }
 
@@ -136,11 +119,7 @@ impl Ninja {
     /// baz = qux $bar
     /// "###);
     /// ```
-    pub fn variable<SName, SValue>(&self, name: SName, value: SValue) -> &Self
-    where
-        SName: AsRef<str>,
-        SValue: AsRef<str>,
-    {
+    pub fn variable(&self, name: impl ToArg, value: impl ToArg) -> &Self {
         self.stmts
             .add_rc(Stmt::Variable(Variable::new(name, value)));
         self
@@ -163,13 +142,9 @@ impl Ninja {
     /// default baz
     /// "###);
     /// ```
-    pub fn defaults<SOutputIter, SOutput>(&self, outputs: SOutputIter) -> &Self
-    where
-        SOutputIter: IntoIterator<Item = SOutput>,
-        SOutput: AsRef<str>,
-    {
+    pub fn defaults(&self, outputs: impl IntoIterator<Item = impl ToArg>) -> &Self {
         self.stmts.add_rc(Stmt::Default(
-            outputs.into_iter().map(|s| s.as_ref().to_owned()).collect(),
+            outputs.into_iter().map(|s| s.to_arg()).collect(),
         ));
         self
     }
@@ -188,11 +163,8 @@ impl Ninja {
     /// subninja foo.ninja
     /// "###);
     /// ```
-    pub fn subninja<SPath>(&self, path: SPath) -> &Self
-    where
-        SPath: AsRef<str>,
-    {
-        self.stmts.add_rc(Stmt::Subninja(path.as_ref().to_owned()));
+    pub fn subninja(&self, path: impl ToArg) -> &Self {
+        self.stmts.add_rc(Stmt::Subninja(path.to_arg()));
         self
     }
 
@@ -215,11 +187,8 @@ impl Ninja {
     /// include bar.ninja
     /// "###);
     /// ```
-    pub fn include<SPath>(&self, path: SPath) -> &Self
-    where
-        SPath: AsRef<str>,
-    {
-        self.stmts.add_rc(Stmt::Include(path.as_ref().to_owned()));
+    pub fn include(&self, path: impl ToArg) -> &Self {
+        self.stmts.add_rc(Stmt::Include(path.to_arg()));
         self
     }
 
