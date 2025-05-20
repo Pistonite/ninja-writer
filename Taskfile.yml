@@ -1,24 +1,39 @@
 version: '3'
 
+includes:
+  cargo:
+    taskfile: ./mono-dev/task/cargo.yaml
+    optional: true
+    internal: true
+
 tasks:
-  test:
-    desc: Run tests
+  install-cargo-extra-tools:
+    aliases: [icets]
     cmds:
-    - cargo test
-    - cargo test --no-default-features
-    - cargo test --features thread-safe
+      - cargo install cargo-watch live-server
+
+  install:
+    cmds:
+      - rm -rf mono-dev
+      - git clone https://github.com/Pistonight/mono-dev --depth 1
+
+  test:
+    cmds:
+      - cargo test
+      - cargo test --no-default-features
+      - cargo test --features thread-safe
 
   check:
-    desc: Run lints
     cmds:
-    - cargo clippy --all-features -- -Dwarnings
-    - cargo fmt --check
+      - task: cargo:clippy-all
+      - task: cargo:fmt-check
 
-  doc:
-    desc: Host docs live
+  fix:
     cmds:
-    - cargo doc
-    - live-server -p 8081 target/doc &
-    - cargo watch -x doc
+      - task: cargo:fmt-fix
+
+  dev-doc:
+    cmds:
+      - task: cargo:watch-serve-doc
 
 
